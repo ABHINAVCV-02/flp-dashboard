@@ -1,4 +1,4 @@
-Sure! Here's your updated `README.md` along with a `requirements.txt` file for easy setup.
+
 
 ---
 
