@@ -11,7 +11,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 data_json = []
 
-# Upload Page
+# HTML for Upload Page
 upload_html = '''
 <!DOCTYPE html>
 <html>
@@ -32,7 +32,7 @@ upload_html = '''
 </html>
 '''
 
-# Dashboard Page (A4 Landscape Optimized)
+# HTML for Dashboard Page
 dashboard_html = '''
 <!DOCTYPE html>
 <html>
@@ -46,30 +46,25 @@ dashboard_html = '''
                 margin: 1cm;
             }
         }
-
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
             max-width: 100%;
         }
-
         h2 {
             text-align: center;
         }
-
         .charts-container {
             display: flex;
             justify-content: space-around;
             flex-wrap: wrap;
             margin-top: 20px;
         }
-
         .chart-box {
             width: 45%;
             height: 300px;
             margin-bottom: 30px;
         }
-
         canvas {
             width: 100% !important;
             height: 100% !important;
@@ -120,6 +115,16 @@ dashboard_html = '''
                 }
             });
 
+            // Weak student names will be colored red on x-axis
+            const weakIndexes = [];
+            preMarks.forEach((mark, i) => {
+                if (mark < 50 || postMarks[i] < 50) weakIndexes.push(i);
+            });
+
+            const labelColors = names.map((_, i) =>
+                weakIndexes.includes(i) ? 'red' : 'black'
+            );
+
             // Line Chart
             new Chart(document.getElementById('lineChart').getContext('2d'), {
                 type: 'line',
@@ -146,6 +151,16 @@ dashboard_html = '''
                         legend: { position: 'bottom' }
                     },
                     scales: {
+                        x: {
+                            ticks: {
+                                callback: function(value, index) {
+                                    return this.getLabelForValue(index);
+                                },
+                                color: function(context) {
+                                    return labelColors[context.index];
+                                }
+                            }
+                        },
                         y: {
                             beginAtZero: true,
                             max: 100
@@ -155,8 +170,8 @@ dashboard_html = '''
             });
         })
         .catch(err => {
-            document.body.innerHTML += "<p>Error loading data.</p>";
-            console.error(err);
+            document.body.innerHTML += "<p>Error loading data: " + err.message + "</p>";
+            console.error("Detailed Error:", err);
         });
     </script>
 </body>
@@ -192,9 +207,26 @@ def upload_file():
     except Exception as e:
         return f"Error processing file: {e}", 500
 
+    # Normalize column names
+    df.columns = [col.strip().lower().replace(' ', '_') for col in df.columns]
+
+    # Rename columns
+    col_map = {
+        'student_name': 'Name',
+        'name': 'Name',
+        'pre_summative': 'Pre_Summative',
+        'post_summative': 'Post_Summative'
+    }
+    df.rename(columns=col_map, inplace=True)
+
     required_columns = {'Name', 'Pre_Summative', 'Post_Summative'}
     if not required_columns.issubset(df.columns):
         return f"Missing required columns: {required_columns - set(df.columns)}", 400
+
+    # Clean data
+    df['Pre_Summative'] = pd.to_numeric(df['Pre_Summative'], errors='coerce')
+    df['Post_Summative'] = pd.to_numeric(df['Post_Summative'], errors='coerce')
+    df.dropna(subset=['Name', 'Pre_Summative', 'Post_Summative'], inplace=True)
 
     data_json = df.to_dict(orient='records')
     return redirect('/dashboard')
